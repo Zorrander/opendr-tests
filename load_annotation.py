@@ -16,9 +16,9 @@ session = fo.launch_app(view=view)
 
 session.wait()
 '''
-json_file = "/home/opendr/project-7-at-2022-11-09-14-23-12119809/new_dataset/CocoAugJSON.json"
+json_file = "/home/opendr/project-7-at-2022-11-09-14-23-12119809/new_new_dataset/CocoAugJSON.json"
 #image_root = input("image_root: ") # "../Dataset/AnnotatedImages/"
-image_root = "/home/opendr/project-7-at-2022-11-09-14-23-12119809/new_dataset/AugImages"
+image_root = "/home/opendr/project-7-at-2022-11-09-14-23-12119809/new_new_dataset/AugImages"
 
 
 # Import the dataset

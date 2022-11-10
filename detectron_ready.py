@@ -14,6 +14,8 @@ from detectron2.data.datasets import register_coco_instances
 from opendr.engine.learners import Learner
 from opendr.engine.constants import OPENDR_SERVER_URL
 
+import fiftyone.utils.random as four
+
 class Detectron2Learner(Learner):
     supported_backbones = ["resnet"]
 
@@ -25,8 +27,8 @@ class Detectron2Learner(Learner):
                                                 iters=iters, temp_path=temp_path, 
                                                 backbone=backbone)
         self.cfg = get_cfg()
-        self.cfg.merge_from_file(model_zoo.get_config_file("COCO-Keypoints/keypoint_rcnn_R_50_FPN_3x.yaml"))
-        self.cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-Keypoints/keypoint_rcnn_R_50_FPN_3x.yaml")
+        self.cfg.merge_from_file(model_zoo.get_config_file("COCO-Detection/retinanet_R_50_FPN_3x.yaml"))
+        self.cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-Detection/retinanet_R_50_FPN_3x.yaml")
         self.cfg.MODEL.MASK_ON = True
         self.cfg.DATALOADER.NUM_WORKERS = num_workers
         self.cfg.SOLVER.IMS_PER_BATCH = img_per_step
@@ -39,11 +41,30 @@ class Detectron2Learner(Learner):
         self.cfg.MODEL.SEM_SEG_HEAD.NORM = norm
         self.cfg.MODEL.ROI_KEYPOINT_HEAD.LOSS_WEIGHT = loss_weight
 
-    def fit(self, val_dataset=None, verbose=True):
-        register_coco_instances("diesel_engine_train", {}, "/home/opendr/project-4-at-2022-11-08-12-58-d9d5f8c2/result.json", "/home/opendr/project-4-at-2022-11-08-12-58-d9d5f8c2/images")
 
+    def __export_split(self, dataset, tag):
+        root = "/home/opendr/project-7-at-2022-11-09-14-23-12119809/new_new_dataset/"
+        extension = ".json"
+        samples = dataset.match_tags(tag)
+        samples.export(
+            dataset_type=fo.types.COCODetectionDataset,
+            labels_path= f"{root}{tag}{extension}",
+            abs_paths=True,
+        )
+
+    def __prepare_dataset(self, dataset):
+        four.random_split(dataset, {"train": 0.7, "test": 0.2, "val": 0.1})
+        self.__export_split(dataset, "train")
+        self.__export_split(dataset, "test")
+        self.__export_split(dataset, "val")
+        register_coco_instances("diesel_engine_train", {}, "/home/opendr/project-7-at-2022-11-09-14-23-12119809/new_new_dataset/train.json", "/home/opendr/project-7-at-2022-11-09-14-23-12119809/new_new_dataset/AugImages")
+        register_coco_instances("diesel_engine_val", {}, "/home/opendr/project-7-at-2022-11-09-14-23-12119809/new_new_dataset/val.json", "/home/opendr/project-7-at-2022-11-09-14-23-12119809/new_new_dataset/AugImages")
         self.cfg.DATASETS.TRAIN = ("diesel_engine_train",)
-        
+        self.cfg.DATASETS.TEST = ("diesel_engine_val")
+
+    def fit(self, dataset, verbose=True):
+        self.__prepare_dataset(dataset)
+
         trainer = DefaultTrainer(self.cfg)
 
         trainer.resume_or_load(resume=False)
@@ -78,8 +99,15 @@ class Detectron2Learner(Learner):
 
 def main():
     detectron2 = Detectron2Learner()
-
-    detectron2.fit()
+    json_file = "/home/opendr/project-7-at-2022-11-09-14-23-12119809/new_new_dataset/CocoAugJSON.json"
+    #image_root = input("image_root: ") # "../Dataset/AnnotatedImages/"
+    image_root = "/home/opendr/project-7-at-2022-11-09-14-23-12119809/new_new_dataset/AugImages"
+    # Import the dataset
+    dataset = fo.Dataset.from_dir(
+        dataset_type=fo.types.COCODetectionDataset,
+        data_path=image_root,
+        labels_path=json_file)
+    detectron2.fit(dataset)
 
 
 

@@ -4,7 +4,7 @@ import json
 import numpy as np
 import fiftyone as fo
 import albumentations as A
-
+from shapely.geometry import Polygon, MultiPolygon 
 
 class COCO:
     '''
@@ -80,7 +80,7 @@ class COCO:
     def generate_new_images(self, augmentation_transformations):
         cnt = 0
         for sample in self.dataset:
-            print("Image {}/{} - {}".format(cnt, len(self.dataset), self.json_file['images'][cnt]['file_name']), end=" ", flush=True)
+            print("Image {}/{} - {}".format(cnt+1, len(self.dataset), self.json_file['images'][cnt]['file_name']), end=" ", flush=True)
             img = cv2.imread(sample.filepath, 1)
             filename = os.path.join(self.augmentation_output, self.json_file['images'][cnt]['file_name'] + ".jpeg")
             cv2.imwrite(filename, img)
@@ -107,26 +107,36 @@ class COCO:
         height = sample.metadata["height"]
         width = sample.metadata["width"]
 
-        bboxes, img_keypoints, category_ids = [], [], []
-        keypoint_record = []
+        detections = sample.segmentations.detections
+        bboxes, img_keypoints, category_ids = list(), list(), list()
+        polygon_lengths_record, polygons, segmentations = list(), list(), list()
+        num_polygons = len(detections)
 
-        for det in sample.segmentations.detections:
+        for idx, det in enumerate(detections):
             tlx, tly, w, h = det.bounding_box
             bbox = [int(tlx*width), int(tly*height), int(w*width), int(h*height)]
             bboxes.append(bbox)
             polyline = det.to_polyline()
             det_keypoints = [(x*width, y*height) for x, y in polyline.points[0]]
+            polygon_lengths_record.append(len(det_keypoints))
             img_keypoints.extend(det_keypoints)
             category_ids.append(det.label)
-
-        print(img_keypoints)
 
         transformed = albu_transform(image=img, bboxes=bboxes, keypoints=img_keypoints, category_ids=category_ids)
         transformed_image = transformed['image']
         transformed_bboxes = transformed['bboxes']
         transformed_categories = transformed['category_ids']
         transformed_keypoints = transformed['keypoints']
-        print("transformed keypoints ", transformed_keypoints)
+
+        kp_idx = 0
+        for length in polygon_lengths_record:
+            contour = [pt for pt in transformed_keypoints[kp_idx:kp_idx+length]]
+            poly = Polygon(contour)
+            poly = poly.simplify(1.0, preserve_topology=True)
+            polygons.append(poly)
+            segmentation = np.array(poly.exterior.coords).ravel().tolist()
+            segmentations.append(np.array(contour).ravel().tolist())
+            kp_idx += length
 
         new_name = f"{sample.id}{str(transformCount)}"
         filename = os.path.join(self.augmentation_output, new_name + ".jpeg")
@@ -139,16 +149,16 @@ class COCO:
             "height":height,
             "id":self.image_id_start,
             "file_name":new_name
-        })    
+        })
 
-        for bbox, poly, cat_it in zip(transformed_bboxes,transformed_keypoints, transformed_categories):
+        for bbox, poly, cat_it in zip(transformed_bboxes, segmentations, transformed_categories):
             self.annotation_id_start += 1
             cat_id=0 if cat_it == "bolt" else 1
             self.json_file['annotations'].append({
                 "id":self.annotation_id_start,
                 "image_id":self.image_id_start,
                 "category_id": cat_id,
-                "segmentation": poly,
+                "segmentation": [poly],
                 "bbox": bbox,
                 "ignore":0,
                 "iscrowd":0,
@@ -159,13 +169,13 @@ class COCO:
 def main():
     ## Ask the below inputs from the User
     #json_file = input("json_file: ") # "../Dataset/miniJSON/AnnotatedJSON.json"
-    json_file = "/home/opendr/project-7-at-2022-11-09-14-23-12119809/result.json"
+    json_file = "/home/opendr/project-7-at-2022-11-09-14-23-12119809/new_dataset/CocoAugJSON.json"
     #image_root = input("image_root: ") # "../Dataset/AnnotatedImages/"
-    image_root = "/home/opendr/project-7-at-2022-11-09-14-23-12119809/images/"
+    image_root = "/home/opendr/project-7-at-2022-11-09-14-23-12119809/new_dataset/AugImages"
     #list_augmentations_file = input("list_augmentations_file: ") 
     list_augmentations_file = "/home/opendr/Gaurang/engineAssembly/new_dataset/Augmentations"
     #output_folder = input("output_folder: ") # "../Dataset"
-    output_folder = "/home/opendr/project-7-at-2022-11-09-14-23-12119809/new_dataset/"
+    output_folder = "/home/opendr/project-7-at-2022-11-09-14-23-12119809/new_new_dataset/"
 
     coco = COCO(json_file, image_root, list_augmentations_file, output_folder)
 
